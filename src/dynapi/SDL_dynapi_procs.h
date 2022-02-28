@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2014 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2016 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -606,3 +606,6 @@ SDL_DYNAPI_PROC(SDL_AssertionHandler,SDL_GetAssertionHandler,(void **a),(a),retu
 #ifdef __WIN32__
 SDL_DYNAPI_PROC(void,SDL_DXGIGetOutputInfo,(int a,int *b, int *c),(a,b,c),)
 #endif
+SDL_DYNAPI_PROC(int,SDL_WarpMouseGlobal,(int a, int b),(a,b),return)
+SDL_DYNAPI_PROC(int,SDL_CaptureMouse,(SDL_bool a),(a),return)
+SDL_DYNAPI_PROC(Uint32,SDL_GetGlobalMouseState,(int *a, int *b),(a,b),return)

@@ -22988,7 +22988,7 @@ $as_echo "#define SDL_FILESYSTEM_HAIKU 1" >>confdefs.h
         fi
         # The iOS platform requires special setup.
         SOURCES="$SOURCES $srcdir/src/video/uikit/*.m"
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -fpascal-strings"
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -fobjc-exceptions"
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lm -liconv -lobjc"
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -Wl,-framework,Foundation"
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -Wl,-framework,UIKit"
@@ -23073,7 +23073,7 @@ $as_echo "#define SDL_TIMER_UNIX 1" >>confdefs.h
             SOURCES="$SOURCES $srcdir/src/file/cocoa/*.m"
         fi
         # The Mac OS X platform requires special setup.
-        EXTRA_CFLAGS="$EXTRA_CFLAGS -fpascal-strings"
+        EXTRA_CFLAGS="$EXTRA_CFLAGS -fobjc-exceptions"
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lobjc"
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -Wl,-framework,Cocoa"
         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -Wl,-framework,Carbon"
@@ -24499,7 +24499,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 _ACAWK
 cat >>"\$ac_tmp/subs1.awk" <<_ACAWK &&
   for (key in S) S_is_set[key] = 1
-  FS = ""
+  FS = " "
 
 }
 {
@@ -24631,7 +24631,7 @@ s/'"$ac_delim"'/"\\\
 
 cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
   for (key in D) D_is_set[key] = 1
-  FS = ""
+  FS = " "
 }
 /^[\t ]*#[\t ]*(define|undef)[\t ]+$ac_word_re([\t (]|\$)/ {
   line = \$ 0

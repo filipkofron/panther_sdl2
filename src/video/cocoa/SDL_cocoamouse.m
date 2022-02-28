@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2014 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2016 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -208,20 +208,37 @@ Cocoa_ShowCursor(SDL_Cursor * cursor)
     return 0;
 }
 
-static void
-Cocoa_WarpMouse(SDL_Window * window, int x, int y)
+static SDL_Window *
+SDL_FindWindowAtPoint(const int x, const int y)
 {
-    SDL_WindowData *data = (SDL_WindowData *) window->driverdata;
-    if ([data->listener isMoving])
-    {
-        DLog("Postponing warp, window being moved.");
-        [data->listener setPendingMoveX:x
-                                      Y:y];
-        return;
+    const SDL_Point pt = { x, y };
+    SDL_Window *i;
+    for (i = SDL_GetVideoDevice()->windows; i; i = i->next) {
+        const SDL_Rect r = { i->x, i->y, i->w, i->h };
+        if (SDL_PointInRect(&pt, &r)) {
+            return i;
+        }
     }
 
+    return NULL;
+}
+
+
+static int
+Cocoa_WarpMouseGlobal(int x, int y)
+{
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+
     SDL_Mouse *mouse = SDL_GetMouse();
-    CGPoint point = CGPointMake(x + (float)window->x, y + (float)window->y);
+    if (mouse->focus) {
+        SDL_WindowData *data = (SDL_WindowData *) mouse->focus->driverdata;
+        if ([data->listener isMoving]) {
+            DLog("Postponing warp, window being moved.");
+            [data->listener setPendingMoveX:x Y:y];
+            return 0;
+        }
+    }
+    const CGPoint point = CGPointMake((float)x, (float)y);
 
     Cocoa_HandleMouseWarp(point.x, point.y);
 
@@ -233,12 +250,27 @@ Cocoa_WarpMouse(SDL_Window * window, int x, int y)
     CGWarpMouseCursorPosition(point);
     CGSetLocalEventsSuppressionInterval(0.25);
 
+    /* CGWarpMouseCursorPosition doesn't generate a window event, unlike our
+     * other implementations' APIs. Send what's appropriate.
+     */
     if (!mouse->relative_mode) {
-        /* CGWarpMouseCursorPosition doesn't generate a window event, unlike our
-         * other implementations' APIs.
-         */
-        SDL_SendMouseMotion(mouse->focus, mouse->mouseID, 0, x, y);
+        SDL_Window *win = SDL_FindWindowAtPoint(x, y);
+        SDL_SetMouseFocus(win);
+        if (win) {
+            SDL_assert(win == mouse->focus);
+            SDL_SendMouseMotion(win, mouse->mouseID, 0, x - win->x, y - win->y);
+        }
     }
+
+    [pool release];
+
+    return 0;
+}
+
+static void
+Cocoa_WarpMouse(SDL_Window * window, int x, int y)
+{
+    Cocoa_WarpMouseGlobal(x + window->x, y + window->y);
 }
 
 static int
@@ -271,7 +303,54 @@ Cocoa_SetRelativeMouseMode(SDL_bool enabled)
     if (result != kCGErrorSuccess) {
         return SDL_SetError("CGAssociateMouseAndMouseCursorPosition() failed");
     }
+
+    /* The hide/unhide calls are redundant most of the time, but they fix
+     * https://bugzilla.libsdl.org/show_bug.cgi?id=2550
+     */
+    if (enabled) {
+        [NSCursor hide];
+    } else {
+        [NSCursor unhide];
+    }
     return 0;
+}
+
+static int
+Cocoa_CaptureMouse(SDL_Window *window)
+{
+    /* our Cocoa event code already tracks the mouse outside the window,
+        so all we have to do here is say "okay" and do what we always do. */
+    return 0;
+}
+
+static Uint32
+Cocoa_GetGlobalMouseState(int *x, int *y)
+{
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+
+    //const NSUInteger cocoaButtons = [NSEvent pressedMouseButtons];
+    const NSUInteger buttonNum = [[NSApp currentEvent] buttonNumber];
+    const NSPoint cocoaLocation = [NSEvent mouseLocation];
+    Uint32 retval = 0;
+
+    for (NSScreen *screen in [NSScreen screens]) {
+        NSRect frame = [screen frame];
+        if (NSPointInRect(cocoaLocation, frame)) {
+            *x = (int) cocoaLocation.x;
+            *y = (int) ((frame.origin.y + frame.size.height) - cocoaLocation.y);
+            break;
+        }
+    }
+
+    retval |= (buttonNum & (1 << 0)) ? SDL_BUTTON_LMASK : 0;
+    retval |= (buttonNum & (1 << 1)) ? SDL_BUTTON_RMASK : 0;
+    retval |= (buttonNum & (1 << 2)) ? SDL_BUTTON_MMASK : 0;
+    retval |= (buttonNum & (1 << 3)) ? SDL_BUTTON_X1MASK : 0;
+    retval |= (buttonNum & (1 << 4)) ? SDL_BUTTON_X2MASK : 0;
+
+    [pool release];
+
+    return retval;
 }
 
 void
@@ -286,7 +365,10 @@ Cocoa_InitMouse(_THIS)
     mouse->ShowCursor = Cocoa_ShowCursor;
     mouse->FreeCursor = Cocoa_FreeCursor;
     mouse->WarpMouse = Cocoa_WarpMouse;
+    mouse->WarpMouseGlobal = Cocoa_WarpMouseGlobal;
     mouse->SetRelativeMouseMode = Cocoa_SetRelativeMouseMode;
+    mouse->CaptureMouse = Cocoa_CaptureMouse;
+    mouse->GetGlobalMouseState = Cocoa_GetGlobalMouseState;
 
     SDL_SetDefaultCursor(Cocoa_CreateDefaultCursor());
 
@@ -301,8 +383,7 @@ Cocoa_InitMouse(_THIS)
 void
 Cocoa_HandleMouseEvent(_THIS, NSEvent *event)
 {
-    switch ([event type])
-    {
+    switch ([event type]) {
         case NSMouseMoved:
         case NSLeftMouseDragged:
         case NSRightMouseDragged:
@@ -315,8 +396,11 @@ Cocoa_HandleMouseEvent(_THIS, NSEvent *event)
     }
 
     SDL_Mouse *mouse = SDL_GetMouse();
-
     SDL_MouseData *driverdata = (SDL_MouseData*)mouse->driverdata;
+    if (!driverdata) {
+        return;  /* can happen when returning from fullscreen Space on shutdown */
+    }
+
     const SDL_bool seenWarp = driverdata->seenWarp;
     driverdata->seenWarp = NO;
 

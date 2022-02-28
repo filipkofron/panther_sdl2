@@ -452,7 +452,9 @@ CreateHIDDeviceMatchDictionary(const UInt32 page, const UInt32 usage, int *okay)
     CFDictionaryRef retval = NULL;
     CFNumberRef pageNumRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &page);
     CFNumberRef usageNumRef = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &usage);
-    const void *keys[2] = { (void *) CFSTR(kIOHIDDeviceUsagePageKey), (void *) CFSTR(kIOHIDDeviceUsageKey) };
+    void *a = CFSTR(kIOHIDDeviceUsagePageKey);
+    void *b = CFSTR(kIOHIDDeviceUsageKey);
+    const void *keys[2] = { a, b };
     const void *vals[2] = { (void *) pageNumRef, (void *) usageNumRef };
 
     if (pageNumRef && usageNumRef) {
